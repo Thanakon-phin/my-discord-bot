@@ -3,3 +3,4 @@ edge-tts
 PyNaCl
 python-dotenv
 yt-dlp
+ffmpeg-executable
