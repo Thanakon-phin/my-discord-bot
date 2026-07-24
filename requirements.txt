@@ -1,0 +1,4 @@
+discord.py
+edge-tts
+PyNaCl
+python-dotenv
