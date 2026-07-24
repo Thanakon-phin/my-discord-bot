@@ -9,7 +9,7 @@ import threading
 import re
 from dotenv import load_dotenv
 
-# โหลด TOKEN จากไฟล์ .env
+# โหลด TOKEN จากไฟล์ .env (บน Render จะดึงจาก Environment Variables อัตโนมัติ)
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
@@ -35,71 +35,66 @@ class MusicBot(commands.Bot):
 
 bot = MusicBot()
 
-# --- ระบบ Console Messenger (ส่งข้อความ + รูปภาพ) ---
-
+# --- ระบบ Console Messenger (ปิดการใช้งานบน Cloud Render เนื่องจากไม่มี Keyboard ให้พิมพ์) ---
 def console_input_thread():
-    """ รับค่าจาก Console: รองรับข้อความปกติ, เปลี่ยนห้อง, และส่งข้อความพร้อมรูป """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
     while True:
-        user_input = input("") 
-        
-        if not user_input:
-            continue
-
-        # 1. คำสั่งเปลี่ยนห้อง
-        if user_input.startswith("-pip Channel"):
-            try:
-                new_id = int(user_input.replace("-pip Channel", "").strip())
-                bot.target_channel_id = new_id
-                print(f"📌 [System] เปลี่ยนเป้าหมายไปที่ห้องไอดี: {new_id}")
-            except ValueError:
-                print("❌ [Error] ไอดีห้องต้องเป็นตัวเลขเท่านั้น")
-
-        # 2. คำสั่งส่งข้อความพร้อมรูปภาพ (Format: -send "Text" img pic1.jpg pic2.png)
-        elif user_input.startswith("-send"):
-            if not bot.target_channel_id:
-                print("⚠️ [System] กรุณาเลือกห้องก่อนด้วย -pip Channel [ID]")
+        try:
+            user_input = input("") 
+            if not user_input:
                 continue
 
-            channel = bot.get_channel(bot.target_channel_id)
-            if not channel:
-                print("❌ [Error] หาห้องไม่เจอ")
-                continue
+            if user_input.startswith("-pip Channel"):
+                try:
+                    new_id = int(user_input.replace("-pip Channel", "").strip())
+                    bot.target_channel_id = new_id
+                    print(f"📌 [System] เปลี่ยนเป้าหมายไปที่ห้องไอดี: {new_id}")
+                except ValueError:
+                    print("❌ [Error] ไอดีห้องต้องเป็นตัวเลขเท่านั้น")
 
-            # ใช้ Regex แยกข้อความในฟันหนู และรายชื่อไฟล์หลัง img
-            text_match = re.search(r'"(.*?)"', user_input)
-            msg_content = text_match.group(1) if text_match else ""
-            
-            img_part = user_input.split("img")
-            discord_files = []
-            
-            if len(img_part) > 1:
-                filenames = img_part[1].strip().split()
-                for fn in filenames:
-                    if os.path.exists(fn):
-                        discord_files.append(discord.File(fn))
-                    else:
-                        print(f"❌ [Error] ไม่พบไฟล์: {fn}")
+            elif user_input.startswith("-send"):
+                if not bot.target_channel_id:
+                    print("⚠️ [System] กรุณาเลือกห้องก่อนด้วย -pip Channel [ID]")
+                    continue
 
-            # ส่งข้อมูลไปยัง Discord
-            if msg_content or discord_files:
-                asyncio.run_coroutine_threadsafe(
-                    channel.send(content=msg_content, files=discord_files if discord_files else None), 
-                    bot.loop
-                )
-                print(f"✅ [Sent] ส่งข้อความเรียบร้อยแล้ว")
+                channel = bot.get_channel(bot.target_channel_id)
+                if not channel:
+                    print("❌ [Error] หาห้องไม่เจอ")
+                    continue
 
-        # 3. ส่งข้อความปกติ (ถ้าไม่มีคำสั่งพิเศษ)
-        elif bot.target_channel_id:
-            channel = bot.get_channel(bot.target_channel_id)
-            if channel:
-                asyncio.run_coroutine_threadsafe(channel.send(user_input), bot.loop)
+                text_match = re.search(r'"(.*?)"', user_input)
+                msg_content = text_match.group(1) if text_match else ""
+                
+                img_part = user_input.split("img")
+                discord_files = []
+                
+                if len(img_part) > 1:
+                    filenames = img_part[1].strip().split()
+                    for fn in filenames:
+                        if os.path.exists(fn):
+                            discord_files.append(discord.File(fn))
+                        else:
+                            print(f"❌ [Error] ไม่พบไฟล์: {fn}")
+
+                if msg_content or discord_files:
+                    asyncio.run_coroutine_threadsafe(
+                        channel.send(content=msg_content, files=discord_files if discord_files else None), 
+                        bot.loop
+                    )
+                    print(f"✅ [Sent] ส่งข้อความเรียบร้อยแล้ว")
+
+            elif bot.target_channel_id:
+                channel = bot.get_channel(bot.target_channel_id)
+                if channel:
+                    asyncio.run_coroutine_threadsafe(channel.send(user_input), bot.loop)
+                else:
+                    print("❌ [Error] หาห้องไม่เจอ")
             else:
-                print("❌ [Error] หาห้องไม่เจอ")
-        else:
-            print("⚠️ [System] โปรดตั้งค่าห้องก่อนส่งข้อความ: -pip Channel [ID]")
+                print("⚠️ [System] โปรดตั้งค่าห้องก่อนส่งข้อความ: -pip Channel [ID]")
+        except EOFError:
+            break
 
 # --- ส่วนจัดการเสียง (Equalizer & FFmpeg) ---
 
@@ -116,7 +111,8 @@ def get_ffmpeg_options(seek_time=None):
 
 async def play_audio(vc, seek_time=None):
     if not bot.current_url: return
-    raw_source = discord.FFmpegPCMAudio(bot.current_url, executable="./ffmpeg.exe", **get_ffmpeg_options(seek_time))
+    # แก้ไขจาก "./ffmpeg.exe" เป็น "ffmpeg" เพื่อใช้โปรแกรมที่ลงไว้ในระบบ Linux ของ Render
+    raw_source = discord.FFmpegPCMAudio(bot.current_url, executable="ffmpeg", **get_ffmpeg_options(seek_time))
     source = discord.PCMVolumeTransformer(raw_source, volume=bot.volume)
     bot.start_time = time.time() - (seek_time if seek_time else 0)
     vc.play(source)
@@ -192,8 +188,5 @@ async def stop(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     print(f'🚀 บอทออนไลน์: {bot.user.name}')
-    print(f'💬 [Console Messenger] พร้อมใช้งาน')
-    print(f'👉 วิธีส่งข้อความพร้อมรูป: -send "ข้อความ" img file1.jpg file2.png')
-    threading.Thread(target=console_input_thread, daemon=True).start()
 
 bot.run(TOKEN)
